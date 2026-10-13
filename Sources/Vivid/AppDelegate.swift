@@ -40,7 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(screensChanged),
                                                           name: NSWorkspace.didWakeNotification, object: nil)
 
-        keys.handler = { [weak self] key in self?.handle(key) ?? false }
+        keys.handler = { [weak self] key, fine in self?.handle(key, fine: fine) ?? false }
         if BrightnessKeys.isTrusted { keys.start() } else { BrightnessKeys.requestTrust() }
 
         booster.attach()
@@ -63,19 +63,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return v >= 0.995
     }
 
-    /// Brightness keys continue past the native maximum, then come back down.
-    private func handle(_ key: BrightnessKeys.Key) -> Bool {
-        guard enabled, booster.displayID != nil else { return false }
+    /// One continuous scale driven by the brightness keys: the native range (0–500 nits),
+    /// then the XDR boost (500–1000). The keys are swallowed so only our HUD shows.
+    private func handle(_ key: BrightnessKeys.Key, fine: Bool) -> Bool {
+        guard enabled, let id = booster.displayID, let b = NativeBrightness.value(id) else { return false }
+        let nativeStep: Float = fine ? 1.0 / 64 : 1.0 / 16
+        let boostStep = fine ? step / 4 : step
+        let grid = (b / nativeStep).rounded()
+        var native = b
         switch key {
         case .up:
-            guard nits > sdrNits || atNativeMax else { return false }
-            nits = min(maxNits, nits + step)
+            if b < 0.995 { native = min(1, (grid + 1) * nativeStep); NativeBrightness.set(id, native) }
+            else { nits = min(maxNits, nits + boostStep) }
         case .down:
-            guard nits > sdrNits else { return false }
-            nits = max(sdrNits, nits - step)
+            if nits > sdrNits { nits = max(sdrNits, nits - boostStep) }
+            else { native = max(0, (grid - 1) * nativeStep); NativeBrightness.set(id, native) }
         }
         applyState(animated: true)
-        showHUD()
+        showHUD(native: native)
         return true
     }
 
@@ -95,9 +100,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         updateUI()
     }
 
-    private func showHUD() {
-        guard let (screen, _) = Booster.xdrScreen() else { return }
-        hud.show(nits: nits, fraction: nits / maxNits, on: screen)
+    /// Left half of the bar = native range, right half = XDR boost.
+    private func showHUD(native: Float? = nil) {
+        guard let (screen, id) = Booster.xdrScreen() else { return }
+        let b = Double(native ?? NativeBrightness.value(id) ?? 1)
+        if nits > sdrNits {
+            hud.show(nits: nits, fraction: 0.5 + 0.5 * (nits - sdrNits) / (maxNits - sdrNits), xdr: true, on: screen)
+        } else {
+            // Approximate panel output for the native range (perceptual slider ≈ gamma 2.2).
+            hud.show(nits: sdrNits * pow(b, 2.2), fraction: 0.5 * b, xdr: false, on: screen)
+        }
     }
 
     @objc private func screensChanged() {

@@ -5,11 +5,13 @@ final class HUD {
     private var panel: NSPanel?
     private let bar = Bar()
     private let label = NSTextField(labelWithString: "")
+    private let title = NSTextField(labelWithString: "Luminosité")
     private var hideWork: DispatchWorkItem?
 
-    func show(nits: Double, fraction: Double, on screen: NSScreen) {
+    func show(nits: Double, fraction: Double, xdr: Bool, on screen: NSScreen) {
         let panel = self.panel ?? build()
         label.stringValue = "\(Int(nits.rounded())) nits"
+        title.stringValue = xdr ? "Luminosité XDR" : "Luminosité"
         bar.fraction = fraction
         let size = panel.frame.size
         let vis = screen.visibleFrame
@@ -45,7 +47,6 @@ final class HUD {
         fx.layer?.cornerRadius = 18
         fx.layer?.masksToBounds = true
 
-        let title = NSTextField(labelWithString: "Luminosité")
         title.font = .systemFont(ofSize: 13, weight: .semibold)
         title.frame = NSRect(x: 16, y: 36, width: 150, height: 18)
         label.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
@@ -73,6 +74,10 @@ final class HUD {
             var fill = bounds; fill.size.width = max(bounds.height, bounds.width * fraction)
             NSColor.labelColor.setFill()
             NSBezierPath(roundedRect: fill, xRadius: r, yRadius: r).fill()
+            // Mark the native maximum (500 nits) in the middle of the bar.
+            let mid = NSRect(x: bounds.midX - 0.75, y: 1, width: 1.5, height: bounds.height - 2)
+            (fraction > 0.5 ? NSColor.windowBackgroundColor : NSColor.labelColor).withAlphaComponent(0.6).setFill()
+            mid.fill()
         }
     }
 }

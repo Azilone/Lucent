@@ -4,7 +4,7 @@ Barre de menu macOS qui débloque la pleine luminosité XDR des écrans Liquid R
 
 Principe : un pixel EDR de 1 pt (invisible) met l'écran en mode étendu, puis la table gamma est montée au-dessus de 1.0. Pas de capture d'écran, pas d'overlay plein écran. macOS restaure la table gamma tout seul quand l'app quitte ou plante.
 
-Usage : luminosité native au max, puis la touche luminosité + continue de 500 à 1000 nits (pas de 50). La touche − redescend. Un HUD affiche les nits. Les touches demandent la permission Accessibilité.
+Usage : Vivid prend en charge les touches de luminosité sur une seule échelle, 0 → 500 nits (luminosité native, pilotée par Vivid) puis 500 → 1000 nits (boost XDR), par pas de 1/16 et de 50 nits (⌥⇧ pour des quarts de pas). Un seul HUD, en nits. Les touches demandent la permission Accessibilité.
 
 ```
 ./build.sh && open build/Vivid.app

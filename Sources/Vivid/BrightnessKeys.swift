@@ -4,11 +4,14 @@ import AppKit
 /// brightness keys through an event tap (needs Accessibility permission).
 enum NativeBrightness {
     private typealias GetFn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
-    private static let get: GetFn? = {
-        guard let h = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW),
-              let sym = dlsym(h, "DisplayServicesGetBrightness") else { return nil }
-        return unsafeBitCast(sym, to: GetFn.self)
-    }()
+    private typealias SetFn = @convention(c) (CGDirectDisplayID, Float) -> Int32
+    private static let lib = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW)
+    private static let get: GetFn? = dlsym(lib, "DisplayServicesGetBrightness").map { unsafeBitCast($0, to: GetFn.self) }
+    private static let setFn: SetFn? = dlsym(lib, "DisplayServicesSetBrightness").map { unsafeBitCast($0, to: SetFn.self) }
+
+    static func set(_ id: CGDirectDisplayID, _ value: Float) {
+        _ = setFn?(id, min(1, max(0, value)))
+    }
 
     /// 0…1, nil if unavailable.
     static func value(_ id: CGDirectDisplayID) -> Float? {
@@ -22,7 +25,8 @@ final class BrightnessKeys {
     enum Key { case up, down }
 
     /// Return true to swallow the key press (the system then does nothing with it).
-    var handler: ((Key) -> Bool)?
+    /// `fine` is ⌥⇧, the system's quarter-step modifier.
+    var handler: ((Key, _ fine: Bool) -> Bool)?
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
 
@@ -70,6 +74,7 @@ final class BrightnessKeys {
         default: return Unmanaged.passUnretained(event)
         }
         guard isDown else { return Unmanaged.passUnretained(event) }
-        return handler?(key) == true ? nil : Unmanaged.passUnretained(event)
+        let fine = event.flags.contains(.maskAlternate) && event.flags.contains(.maskShift)
+        return handler?(key, fine) == true ? nil : Unmanaged.passUnretained(event)
     }
 }

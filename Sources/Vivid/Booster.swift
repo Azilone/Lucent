@@ -7,6 +7,8 @@ import MetalKit
 /// exits, so a crash can never leave the screen boosted.
 final class Booster {
     static let sdrNits: Double = 500
+    /// Hard ceiling (1000 nits): the XDR panel's sustained full-screen limit.
+    static let maxLinearRatio: Double = 2.0
 
     private(set) var displayID: CGDirectDisplayID?
     private var screen: NSScreen?
@@ -74,8 +76,13 @@ final class Booster {
         }
         if base == nil { base = Self.readTable(id) }
         guard let base else { return }
-        pixel.show(on: screen, value: factor)
-        let k = Float(factor)
+        // `factor` is a linear luminance ratio. Never ask for more than the panel can
+        // currently show (that clips to white), and convert to the table's encoded
+        // space: the gamma table is applied to gamma-encoded values (≈ 2.2).
+        let headroom = max(1, Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue))
+        let linear = min(factor, headroom, Self.maxLinearRatio)
+        pixel.show(on: screen, value: linear)
+        let k = Float(pow(linear, 1 / 2.2))
         CGSetDisplayTransferByTable(id, UInt32(base.r.count), base.r.map { $0 * k }, base.g.map { $0 * k }, base.b.map { $0 * k })
     }
 
@@ -83,7 +90,7 @@ final class Booster {
     private func maintain() {
         guard animation == nil, let id = displayID, let t = Self.readTable(id) else { return }
         if current <= 1.0001 { base = t; return }
-        let expected = (base?.r.last ?? 1) * Float(current)
+        let expected = (base?.r.last ?? 1) * Float(pow(min(current, Self.maxLinearRatio), 1 / 2.2))
         guard abs((t.r.last ?? 0) - expected) > 0.01 else { return }
         if (t.r.last ?? 2) <= 1.0001 { base = t } // system wrote a fresh SDR table
         apply(current)
