@@ -127,7 +127,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         Task { @MainActor in
-            do { try await overlay.start(on: screen, displayID: id) }
+            do {
+                try await overlay.start(on: screen, displayID: id)
+                if ProcessInfo.processInfo.environment["VIVID_TEST_STALL"] != nil {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Thread.sleep(forTimeInterval: 5) }
+                }
+            }
             catch { NSLog("Vivid: start failed: \(error)"); overlay.stop() }
         }
     }
