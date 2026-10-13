@@ -18,6 +18,8 @@ final class Booster {
     private var animation: Timer?
     private var keepAlive: Timer?
     private let pixel = EDRPixel()
+    /// Called when the safety net trips; the owner should disable boosting.
+    var onSafetyStop: (() -> Void)?
 
     /// The built-in XDR panel (or any display reporting EDR headroom).
     static func xdrScreen() -> (NSScreen, CGDirectDisplayID)? {
@@ -60,7 +62,10 @@ final class Booster {
             let p = min(1, (CACurrentMediaTime() - start) / duration)
             let eased = 1 - pow(1 - p, 3)
             self.apply(from + (self.target - from) * eased)
-            if p >= 1 { timer.invalidate(); self.animation = nil }
+            if p >= 1 {
+                timer.invalidate(); self.animation = nil
+                NSLog("Vivid: boost ×%.3f (%.0f nits)", self.current, self.current * Self.sdrNits)
+            }
         }
         RunLoop.main.add(t, forMode: .common)
         animation = t
@@ -74,7 +79,7 @@ final class Booster {
             if let base { CGSetDisplayTransferByTable(id, UInt32(base.r.count), base.r, base.g, base.b) }
             return
         }
-        if base == nil { base = Self.readTable(id) }
+        if base == nil { base = Self.sdrBase(id) }
         guard let base else { return }
         // `factor` is a linear luminance ratio. Never ask for more than the panel can
         // currently show (that clips to white), and convert to the table's encoded
@@ -86,14 +91,31 @@ final class Booster {
         CGSetDisplayTransferByTable(id, UInt32(base.r.count), base.r.map { $0 * k }, base.g.map { $0 * k }, base.b.map { $0 * k })
     }
 
-    /// macOS (Night Shift, ColorSync, display wake…) can reset the gamma table: put the boost back.
+    /// macOS (ColorSync, display wake…) can reset the gamma table: put the boost back.
+    /// Always recomputed from the stored SDR `base`, never from the live table, so it
+    /// can't compound even if the system rewrites the table while in EDR mode.
     private func maintain() {
-        guard animation == nil, let id = displayID, let t = Self.readTable(id) else { return }
-        if current <= 1.0001 { base = t; return }
-        let expected = (base?.r.last ?? 1) * Float(pow(min(current, Self.maxLinearRatio), 1 / 2.2))
+        guard animation == nil, current > 1.0001, let id = displayID, let base, let t = Self.readTable(id) else { return }
+        // Safety net: the live table must never exceed our ceiling.
+        let ceiling = (base.r.last ?? 1) * Float(pow(Self.maxLinearRatio, 1 / 2.2)) + 0.02
+        if let last = t.r.last, last > ceiling {
+            NSLog("Vivid: SAFETY gamma %.3f above ceiling %.3f, restoring", last, ceiling)
+            onSafetyStop?()
+            return
+        }
+        let expected = (base.r.last ?? 1) * Float(pow(min(current, Self.maxLinearRatio), 1 / 2.2))
         guard abs((t.r.last ?? 0) - expected) > 0.01 else { return }
-        if (t.r.last ?? 2) <= 1.0001 { base = t } // system wrote a fresh SDR table
+        NSLog("Vivid: gamma table changed (last %.3f, expected %.3f), reapplying", t.r.last ?? -1, expected)
         apply(current)
+    }
+
+    /// The display's normal (SDR) table. Captured only when it looks like one; otherwise
+    /// ColorSync defaults are restored first so a boosted table is never taken as base.
+    private static func sdrBase(_ id: CGDirectDisplayID) -> (r: [CGGammaValue], g: [CGGammaValue], b: [CGGammaValue])? {
+        if let t = readTable(id), let last = t.r.last, (0.9...1.0001).contains(last) { return t }
+        CGDisplayRestoreColorSyncSettings()
+        guard let t = readTable(id), let last = t.r.last, (0.9...1.0001).contains(last) else { return nil }
+        return t
     }
 
     private static func readTable(_ id: CGDirectDisplayID) -> (r: [CGGammaValue], g: [CGGammaValue], b: [CGGammaValue])? {

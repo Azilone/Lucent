@@ -35,6 +35,7 @@ class R: NSObject, MTKViewDelegate {
 let r = R(device); v.delegate = r; win.contentView = v
 
 let base = table()
+print("base mid:", base[base.count / 2], "count:", base.count)
 print("headroom before:", screen.maximumExtendedDynamicRangeColorComponentValue, "table max:", base.last!)
 win.orderFrontRegardless()
 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -42,7 +43,13 @@ DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
     let t = base.map { $0 * factor }
     let err = CGSetDisplayTransferByTable(id, UInt32(t.count), t, t, t)
     print("set ×\(factor):", err == .success ? "ok" : "err \(err.rawValue)", "readback max:", table().last!)
-    DispatchQueue.main.asyncAfter(deadline: .now() + hold) {
+    for i in 1...Int(hold * 4) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(i) * 0.25) {
+            let t = table()
+            print(String(format: "t+%.2fs  mid %.4f  last %.4f  headroom %.2f", Double(i) * 0.25, t[t.count / 2], t.last!, screen.maximumExtendedDynamicRangeColorComponentValue))
+        }
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + hold + 0.1) {
         print("readback after \(hold)s:", table().last!, "headroom:", screen.maximumExtendedDynamicRangeColorComponentValue)
         CGDisplayRestoreColorSyncSettings()
         exit(0)

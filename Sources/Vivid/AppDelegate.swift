@@ -43,6 +43,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keys.handler = { [weak self] key, fine in self?.handle(key, fine: fine) ?? false }
         if BrightnessKeys.isTrusted { keys.start() } else { BrightnessKeys.requestTrust() }
 
+        booster.onSafetyStop = { [weak self] in
+            guard let self else { return }
+            self.enabled = false
+            self.nits = self.sdrNits
+            self.booster.detach()
+            CGDisplayRestoreColorSyncSettings()
+            self.booster.attach()
+            self.updateUI()
+        }
         booster.attach()
         if !atNativeMax { nits = sdrNits }
         applyState(animated: false)
@@ -79,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if nits > sdrNits { nits = max(sdrNits, nits - boostStep) }
             else { native = max(0, (grid - 1) * nativeStep); NativeBrightness.set(id, native) }
         }
+        NSLog("Vivid: key %@%@ native %.3f -> %.3f, nits %.0f", key == .up ? "up" : "down", fine ? " fine" : "", b, native, nits)
         applyState(animated: true)
         showHUD(native: native)
         return true
@@ -89,6 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if BrightnessKeys.isTrusted { keys.start() }
         // User lowered brightness another way (Control Center, ambient sensor…): drop the boost.
         if nits > sdrNits, booster.displayID != nil, !atNativeMax {
+            NSLog("Vivid: native brightness below max, dropping boost")
             nits = sdrNits
             applyState(animated: true)
         }
