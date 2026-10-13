@@ -13,6 +13,7 @@ final class EDROverlay: NSObject, SCStreamDelegate {
     private var renderer: Renderer?
     private var stream: SCStream?
     private var output: FrameOutput?
+    private var generation = 0
     private let captureQueue = DispatchQueue(label: "vivid.capture", qos: .userInteractive)
 
     var factor: Float = 1 {
@@ -22,6 +23,9 @@ final class EDROverlay: NSObject, SCStreamDelegate {
     @MainActor
     func start(on screen: NSScreen, displayID id: CGDirectDisplayID) async throws {
         stop()
+        generation += 1
+        let gen = generation
+        displayID = id
         guard let device = MTLCreateSystemDefaultDevice() else { return }
         let renderer = try Renderer(device: device)
         renderer.factor = factor
@@ -50,6 +54,7 @@ final class EDROverlay: NSObject, SCStreamDelegate {
         win.contentView = mtk
 
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        guard gen == generation else { return } // superseded by a newer start/stop
         guard let display = content.displays.first(where: { $0.displayID == id }) else { return }
         let me = content.applications.filter { $0.bundleIdentifier == Bundle.main.bundleIdentifier }
         let filter = SCContentFilter(display: display, excludingApplications: me, exceptingWindows: [])
@@ -77,9 +82,11 @@ final class EDROverlay: NSObject, SCStreamDelegate {
         self.window = win; self.view = mtk; self.renderer = renderer
         self.stream = stream; self.output = output; self.displayID = id
         try await stream.startCapture()
+        if gen != generation { stream.stopCapture { _ in } }
     }
 
     func stop() {
+        generation += 1
         window?.orderOut(nil)
         stream?.stopCapture { _ in }
         window = nil; view = nil; renderer = nil; stream = nil; output = nil; displayID = nil
