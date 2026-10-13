@@ -23,6 +23,22 @@ MacBook Pro Liquid Retina XDR panels can reach 1000 nits full-screen (1600 nits 
 
 Hold <kbd>⌥</kbd><kbd>⇧</kbd> with a brightness key for quarter steps, like macOS. <kbd>⌃</kbd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>V</kbd> toggles Lucent from anywhere.
 
+## Lucent vs Vivid
+
+| | **Lucent** | Vivid |
+|---|---|---|
+| **Price** | **Free** | €10 one-time (1 Mac) · €40 (5 Macs) · €60 (10 Macs) |
+| **Free version** | The full app | Split-screen mode only (half the screen boosted) |
+| **Open source** | ✅ MIT | ❌ |
+| **Max brightness** | 1000 nits | 1000 nits |
+| **Brightness keys go past 100%** | ✅ | ✅ |
+| **Brightness shown in nits** | ✅ | ❌ |
+| **CPU when idle** | **0.0 %** (measured) | Not published (“nothing noticeable”) |
+| **Memory** | **~12 MB** (measured) | Not published |
+| **Download size** | 1.4 MB | — |
+
+<sub>Lucent measured with `top` on a 14" MacBook Pro (M1 Pro), macOS 27, idle. Vivid prices and claims are from [getvivid.app](https://www.getvivid.app/) as of October 2026; the Mac App Store version costs more. Vivid is a trademark of its owners; Lucent is not affiliated with them.</sub>
+
 ## Requirements
 
 - A Mac with an XDR display: MacBook Pro 14"/16" (M1 Pro and later) or Pro Display XDR
