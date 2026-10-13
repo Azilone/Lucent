@@ -37,7 +37,8 @@ final class Booster {
         if changed { base = nil; pixel.hide() }
         apply(current)
         if keepAlive == nil {
-            let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.maintain() }
+            let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.maintain() }
+            t.tolerance = 0.3
             RunLoop.main.add(t, forMode: .common)
             keepAlive = t
         }

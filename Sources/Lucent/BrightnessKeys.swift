@@ -30,6 +30,8 @@ final class BrightnessKeys {
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
 
+    var isRunning: Bool { tap != nil }
+
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
     static func requestTrust() {

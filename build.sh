@@ -1,11 +1,16 @@
 #!/bin/zsh
-# Builds Lucent.app into build/. Pass --install to copy it to /Applications.
+# Builds a universal Lucent.app into build/.
+#   --install  copy it to /Applications
+#   --zip      also create build/Lucent-<version>.zip for a GitHub release
 set -e
 cd "$(dirname "$0")"
-swift build -c release
+VERSION=1.0
+ARCHS=(--arch arm64 --arch x86_64)
+swift build -c release $ARCHS 2>&1 | grep -v "x86_64 architecture is deprecated" || true
+BIN=$(swift build -c release $ARCHS --show-bin-path)
 APP=build/Lucent.app
 rm -rf "$APP"; mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/Lucent "$APP/Contents/MacOS/Lucent"
+cp "$BIN/Lucent" "$APP/Contents/MacOS/Lucent"
 cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cat > "$APP/Contents/Info.plist" <<PL
 <?xml version="1.0" encoding="UTF-8"?>
@@ -17,7 +22,7 @@ cat > "$APP/Contents/Info.plist" <<PL
 <key>CFBundleDisplayName</key><string>Lucent</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
 <key>CFBundleVersion</key><string>1</string>
 <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
@@ -33,7 +38,11 @@ else
   codesign --force --sign - "$APP"
 fi
 echo "Built $APP"
-if [[ "$1" == "--install" ]]; then
+if [[ " $* " == *" --zip "* ]]; then
+  ditto -c -k --keepParent "$APP" "build/Lucent-$VERSION.zip"
+  echo "Zipped build/Lucent-$VERSION.zip"
+fi
+if [[ " $* " == *" --install "* ]]; then
   pkill -x Lucent 2>/dev/null || true
   rm -rf /Applications/Lucent.app
   cp -R "$APP" /Applications/

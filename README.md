@@ -31,6 +31,17 @@ Hold <kbd>⌥</kbd><kbd>⇧</kbd> with a brightness key for quarter steps, like 
 
 ## Install
 
+### Download
+
+1. Download `Lucent-1.0.zip` from the [latest release](https://github.com/Azilone/Lucent/releases/latest), unzip it, and move **Lucent.app** to **Applications**.
+2. The app isn't notarized, so macOS blocks it on first launch. Open it once, then go to **System Settings › Privacy & Security** and click **Open Anyway**. Or run:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/Lucent.app
+   ```
+3. Allow Lucent in **System Settings › Privacy & Security › Accessibility**, then relaunch it.
+
+### Build from source
+
 Build from source (Xcode Command Line Tools required):
 
 ```bash
@@ -41,6 +52,12 @@ open /Applications/Lucent.app
 ```
 
 On first launch, allow Lucent in **System Settings › Privacy & Security › Accessibility**.
+
+## Performance
+
+- **CPU:** 0% when idle. Lucent does work only when you press a brightness key or move the slider.
+- **Memory:** about 12 MB.
+- **Battery:** the app itself costs nothing measurable. The extra brightness does: driving the panel at 1000 nits uses noticeably more power than 500 nits, just like any other way of reaching that brightness. At native brightness (≤ 500 nits), Lucent leaves the display untouched.
 
 ## How it works
 

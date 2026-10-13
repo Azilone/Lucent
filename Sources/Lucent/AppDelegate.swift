@@ -2,7 +2,7 @@ import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let defaults = UserDefaults.standard
     private let booster = Booster()
     private let keys = BrightnessKeys()
@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var slider: NSSlider!
     private var hotKey: EventHotKeyRef?
     private var poll: Timer?
+    private var shownIcon: String?
 
     private let step: Double = 50
     private var sdrNits: Double { Booster.sdrNits }
@@ -54,7 +55,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !atNativeMax { nits = sdrNits }
         applyState(animated: false)
 
-        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in self?.tick() }
+        let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+        t.tolerance = 0.3
         RunLoop.main.add(t, forMode: .common)
         poll = t
     }
@@ -98,17 +100,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return true
     }
 
+    /// Cheap 1 Hz housekeeping; does nothing while idle and the key tap is running.
     private func tick() {
         // Accessibility granted after launch: start listening to the keys.
-        if BrightnessKeys.isTrusted { keys.start() }
+        if !keys.isRunning, BrightnessKeys.isTrusted, keys.start() { updateUI() }
         // User lowered brightness another way (Control Center, ambient sensor…): drop the boost.
-        if nits > sdrNits, booster.displayID != nil, !atNativeMax {
+        if enabled, nits > sdrNits, booster.displayID != nil, !atNativeMax {
             NSLog("Lucent: native brightness below max, dropping boost")
             nits = sdrNits
             applyState(animated: true)
         }
-        updateUI()
     }
+
+    func menuWillOpen(_ menu: NSMenu) { updateUI() }
 
     private func applyState(animated: Bool) {
         booster.set(nits: enabled ? nits : sdrNits, animated: animated)
@@ -164,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(login)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Lucent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.delegate = self
         statusItem.menu = menu
     }
 
@@ -210,9 +215,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         slider.isEnabled = enabled && booster.displayID != nil
         valueLabel.stringValue = booster.displayID == nil ? "No XDR display"
             : nits > sdrNits ? "XDR brightness: \(Int(nits)) nits" : "Native brightness (500 nits)"
-        accessItem.isHidden = BrightnessKeys.isTrusted
-        let boosted = enabled && nits > sdrNits
-        statusItem.button?.image = NSImage(systemSymbolName: boosted ? "sun.max.fill" : "sun.max",
-                                           accessibilityDescription: "Lucent")
+        accessItem.isHidden = keys.isRunning
+        let icon = enabled && nits > sdrNits ? "sun.max.fill" : "sun.max"
+        if icon != shownIcon {
+            shownIcon = icon
+            statusItem.button?.image = NSImage(systemSymbolName: icon, accessibilityDescription: "Lucent")
+        }
     }
 }
