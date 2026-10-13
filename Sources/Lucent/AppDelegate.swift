@@ -30,8 +30,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        defaults.removeObject(forKey: "factor")
-        defaults.removeObject(forKey: "lastEmergency")
         buildMenu()
         registerHotKey()
 
@@ -61,6 +59,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         poll = t
     }
 
+    /// Launched again (Raycast, Spotlight, Finder) while running: open the menu.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        statusItem.button?.performClick(nil)
+        return false
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         booster.detach()
     }
@@ -88,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if nits > sdrNits { nits = max(sdrNits, nits - boostStep) }
             else { native = max(0, (grid - 1) * nativeStep); NativeBrightness.set(id, native) }
         }
-        NSLog("Vivid: key %@%@ native %.3f -> %.3f, nits %.0f", key == .up ? "up" : "down", fine ? " fine" : "", b, native, nits)
+        NSLog("Lucent: key %@%@ native %.3f -> %.3f, nits %.0f", key == .up ? "up" : "down", fine ? " fine" : "", b, native, nits)
         applyState(animated: true)
         showHUD(native: native)
         return true
@@ -99,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if BrightnessKeys.isTrusted { keys.start() }
         // User lowered brightness another way (Control Center, ambient sensor…): drop the boost.
         if nits > sdrNits, booster.displayID != nil, !atNativeMax {
-            NSLog("Vivid: native brightness below max, dropping boost")
+            NSLog("Lucent: native brightness below max, dropping boost")
             nits = sdrNits
             applyState(animated: true)
         }
@@ -134,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
 
-        toggleItem = NSMenuItem(title: "Activer Vivid  (⌃⌥⌘V)", action: #selector(toggle), keyEquivalent: "")
+        toggleItem = NSMenuItem(title: "Enable Lucent  (⌃⌥⌘V)", action: #selector(toggle), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
 
@@ -151,15 +155,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(sliderItem)
 
         menu.addItem(.separator())
-        accessItem = NSMenuItem(title: "Autoriser les touches de luminosité…", action: #selector(requestAccess), keyEquivalent: "")
+        accessItem = NSMenuItem(title: "Allow Brightness Keys…", action: #selector(requestAccess), keyEquivalent: "")
         accessItem.target = self
         menu.addItem(accessItem)
-        let login = NSMenuItem(title: "Lancer au démarrage", action: #selector(toggleLogin), keyEquivalent: "")
+        let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
         login.target = self
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Quitter Vivid", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit Lucent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         statusItem.menu = menu
     }
 
@@ -187,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sender.state = SMAppService.mainApp.status == .enabled ? .on : .off
     }
 
-    /// ⌃⌥⌘V turns Vivid on/off from anywhere.
+    /// ⌃⌥⌘V turns Lucent on/off from anywhere.
     private func registerHotKey() {
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         InstallEventHandler(GetApplicationEventTarget(), { _, _, ctx in
@@ -195,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { me.toggle() }
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil)
-        let id = EventHotKeyID(signature: OSType(0x5649_5644), id: 1) // 'VIVD'
+        let id = EventHotKeyID(signature: OSType(0x4C43_4E54), id: 1) // 'LCNT'
         RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(cmdKey | optionKey | controlKey), id,
                             GetApplicationEventTarget(), 0, &hotKey)
     }
@@ -204,11 +208,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         toggleItem.state = enabled ? .on : .off
         slider.doubleValue = nits
         slider.isEnabled = enabled && booster.displayID != nil
-        valueLabel.stringValue = booster.displayID == nil ? "Aucun écran XDR"
-            : nits > sdrNits ? "Luminosité XDR : \(Int(nits)) nits" : "Luminosité native (500 nits)"
+        valueLabel.stringValue = booster.displayID == nil ? "No XDR display"
+            : nits > sdrNits ? "XDR brightness: \(Int(nits)) nits" : "Native brightness (500 nits)"
         accessItem.isHidden = BrightnessKeys.isTrusted
         let boosted = enabled && nits > sdrNits
         statusItem.button?.image = NSImage(systemSymbolName: boosted ? "sun.max.fill" : "sun.max",
-                                           accessibilityDescription: "Vivid")
+                                           accessibilityDescription: "Lucent")
     }
 }

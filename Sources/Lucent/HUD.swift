@@ -5,13 +5,13 @@ final class HUD {
     private var panel: NSPanel?
     private let bar = Bar()
     private let label = NSTextField(labelWithString: "")
-    private let title = NSTextField(labelWithString: "Luminosité")
+    private let title = NSTextField(labelWithString: "Brightness")
     private var hideWork: DispatchWorkItem?
 
     func show(nits: Double, fraction: Double, xdr: Bool, on screen: NSScreen) {
         let panel = self.panel ?? build()
         label.stringValue = "\(Int(nits.rounded())) nits"
-        title.stringValue = xdr ? "Luminosité XDR" : "Luminosité"
+        title.stringValue = xdr ? "XDR Brightness" : "Brightness"
         bar.fraction = fraction
         let size = panel.frame.size
         let vis = screen.visibleFrame

@@ -64,7 +64,7 @@ final class Booster {
             self.apply(from + (self.target - from) * eased)
             if p >= 1 {
                 timer.invalidate(); self.animation = nil
-                NSLog("Vivid: boost ×%.3f (%.0f nits)", self.current, self.current * Self.sdrNits)
+                NSLog("Lucent: boost ×%.3f (%.0f nits)", self.current, self.current * Self.sdrNits)
             }
         }
         RunLoop.main.add(t, forMode: .common)
@@ -99,13 +99,13 @@ final class Booster {
         // Safety net: the live table must never exceed our ceiling.
         let ceiling = (base.r.last ?? 1) * Float(pow(Self.maxLinearRatio, 1 / 2.2)) + 0.02
         if let last = t.r.last, last > ceiling {
-            NSLog("Vivid: SAFETY gamma %.3f above ceiling %.3f, restoring", last, ceiling)
+            NSLog("Lucent: SAFETY gamma %.3f above ceiling %.3f, restoring", last, ceiling)
             onSafetyStop?()
             return
         }
         let expected = (base.r.last ?? 1) * Float(pow(min(current, Self.maxLinearRatio), 1 / 2.2))
         guard abs((t.r.last ?? 0) - expected) > 0.01 else { return }
-        NSLog("Vivid: gamma table changed (last %.3f, expected %.3f), reapplying", t.r.last ?? -1, expected)
+        NSLog("Lucent: gamma table changed (last %.3f, expected %.3f), reapplying", t.r.last ?? -1, expected)
         apply(current)
     }
 

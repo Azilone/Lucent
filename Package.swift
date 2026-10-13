@@ -2,9 +2,9 @@
 import PackageDescription
 
 let package = Package(
-    name: "Vivid",
+    name: "Lucent",
     platforms: [.macOS(.v13)],
     targets: [
-        .executableTarget(name: "Vivid", path: "Sources/Vivid")
+        .executableTarget(name: "Lucent", path: "Sources/Lucent")
     ]
 )
