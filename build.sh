@@ -18,5 +18,5 @@ cat > "$APP/Contents/Info.plist" <<PL
 <key>LSUIElement</key><true/>
 </dict></plist>
 PL
-codesign --force --sign - "$APP"
+codesign --force --sign "Apple Development" "$APP"
 echo "OK: $APP"

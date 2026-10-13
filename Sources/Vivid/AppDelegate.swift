@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -8,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var toggleItem: NSMenuItem!
     private var valueLabel: NSTextField!
     private var slider: NSSlider!
+    private var hotKey: EventHotKeyRef?
 
     static let minFactor: Double = 1.0
     static let maxFactor: Double = 1.6
@@ -17,23 +19,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         set { defaults.set(newValue, forKey: "enabled") }
     }
     private var factor: Double {
-        get { defaults.object(forKey: "factor") as? Double ?? 1.5 }
+        get { defaults.object(forKey: "factor") as? Double ?? 1.2 }
         set { defaults.set(newValue, forKey: "factor") }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         let nc = NotificationCenter.default
-        nc.addObserver(self, selector: #selector(refresh), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        nc.addObserver(self, selector: #selector(restart), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         let wnc = NSWorkspace.shared.notificationCenter
-        wnc.addObserver(self, selector: #selector(refresh), name: NSWorkspace.didWakeNotification, object: nil)
-        wnc.addObserver(self, selector: #selector(refresh), name: NSWorkspace.activeSpaceDidChangeNotification, object: nil)
+        wnc.addObserver(self, selector: #selector(restart), name: NSWorkspace.didWakeNotification, object: nil)
+        registerHotKey()
         refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        overlay.hide()
-        Brightness.reset()
+        overlay.stop()
+    }
+
+    /// ⌃⌥⌘V toggles the boost from anywhere (no Accessibility permission needed).
+    private func registerHotKey() {
+        var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        InstallEventHandler(GetApplicationEventTarget(), { _, _, ctx in
+            let me = Unmanaged<AppDelegate>.fromOpaque(ctx!).takeUnretainedValue()
+            DispatchQueue.main.async { me.toggle() }
+            return noErr
+        }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil)
+        let id = EventHotKeyID(signature: OSType(0x5649_5644), id: 1) // 'VIVD'
+        RegisterEventHotKey(UInt32(kVK_ANSI_V), UInt32(cmdKey | optionKey | controlKey), id,
+                            GetApplicationEventTarget(), 0, &hotKey)
     }
 
     // MARK: Menu
@@ -42,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         let menu = NSMenu()
 
-        toggleItem = NSMenuItem(title: "Activer XDR", action: #selector(toggle), keyEquivalent: "")
+        toggleItem = NSMenuItem(title: "Activer XDR  (⌃⌥⌘V)", action: #selector(toggle), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
 
@@ -72,7 +86,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func sliderChanged() {
         factor = (slider.doubleValue * 20).rounded() / 20
-        if enabled { refresh() } else { updateUI() }
+        overlay.factor = Float(factor)
+        updateUI()
     }
 
     @objc private func toggleLogin(_ sender: NSMenuItem) {
@@ -85,18 +100,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: State
 
-    @objc private func refresh() {
-        defer { updateUI() }
-        guard enabled else { overlay.hide(); Brightness.reset(); return }
+    private var xdrScreen: (NSScreen, CGDirectDisplayID)? {
+        NSScreen.screens
+            .filter { $0.maximumPotentialExtendedDynamicRangeColorComponentValue > 1 }
+            .sorted { a, _ in a == NSScreen.main }
+            .compactMap { s in (s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID).map { (s, $0) } }
+            .first
+    }
 
-        let xdr = NSScreen.screens.filter { Brightness.headroom(of: $0) > 1.0 }
-        guard let main = xdr.first(where: { $0 == NSScreen.main }) ?? xdr.first else {
-            overlay.hide(); Brightness.reset(); return
+    @objc private func restart() { overlay.stop(); refresh() }
+
+    private func refresh() {
+        updateUI()
+        guard enabled, let (screen, id) = xdrScreen else { overlay.stop(); return }
+        overlay.factor = Float(min(factor, Double(screen.maximumPotentialExtendedDynamicRangeColorComponentValue)))
+        guard overlay.displayID != id else { return }
+
+        guard CGPreflightScreenCaptureAccess() else {
+            enabled = false; updateUI()
+            CGRequestScreenCaptureAccess()
+            let alert = NSAlert()
+            alert.messageText = "Autorisation requise"
+            alert.informativeText = "Active Vivid dans Réglages Système › Confidentialité et sécurité › Enregistrement de l'écran, puis relance Vivid."
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
         }
-        overlay.show(on: main)
-        for screen in xdr {
-            guard let id = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID else { continue }
-            Brightness.apply(Float(min(factor, Double(Brightness.headroom(of: screen)))), to: id)
+        Task { @MainActor in
+            do { try await overlay.start(on: screen, displayID: id) }
+            catch { NSLog("Vivid: start failed: \(error)"); overlay.stop() }
         }
     }
 
