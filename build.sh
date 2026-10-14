@@ -4,8 +4,8 @@
 #   --zip      also create build/Lucent-<version>.zip for a GitHub release
 set -e
 cd "$(dirname "$0")"
-VERSION=1.0
-BUILD=1
+VERSION=1.1
+BUILD=2
 ARCHS=(--arch arm64 --arch x86_64)
 swift build -c release $ARCHS 2>&1 | grep -v "x86_64 architecture is deprecated" || true
 BIN=$(swift build -c release $ARCHS --show-bin-path)
