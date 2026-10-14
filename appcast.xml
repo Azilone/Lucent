@@ -1,0 +1,17 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Lucent</title>
+        <item>
+            <title>1.1</title>
+            <pubDate>Wed, 14 Oct 2026 14:35:04 +0700</pubDate>
+            <link>https://github.com/Azilone/Lucent</link>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Automatic boost: optionally boost on battery or when plugged in, and pause in Low Power Mode (menu › Automatic Boost)</li><li>Automatic updates via Sparkle (menu › Check for Updates…)</li><li>Fix: the gamma table now lifts the whole curve, so the image no longer looks washed out at high brightness</li><li>Note: if you&#x27;re on 1.0, download this version manually once. Future updates will install automatically.</li></ul>
+]]></description>
+            <enclosure url="https://github.com/Azilone/Lucent/releases/download/v1.1/Lucent-1.1.zip" length="2542774" type="application/octet-stream" sparkle:edSignature="UtMcBVoXp2NP76ZpRZ0kvYIbqfs5pKjn/AtKPJEqmphw8t2tcOg0wUuxQiZst1yKOH/DszoihVZnbhHA5eYYAw=="/>
+        </item>
+    </channel>
+</rss>
