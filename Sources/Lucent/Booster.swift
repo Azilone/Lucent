@@ -120,8 +120,10 @@ final class Booster {
     }
 
     private static func readTable(_ id: CGDirectDisplayID) -> (r: [CGGammaValue], g: [CGGammaValue], b: [CGGammaValue])? {
-        var r = [CGGammaValue](repeating: 0, count: 1024), g = r, b = r, n: UInt32 = 0
-        guard CGGetDisplayTransferByTable(id, 1024, &r, &g, &b, &n) == .success, n > 0 else { return nil }
+        // 256 entries on purpose: with a 1024-entry table macOS clamps the top of the
+        // curve to 1.0 while still lifting mid-tones, which washes the image out.
+        var r = [CGGammaValue](repeating: 0, count: 256), g = r, b = r, n: UInt32 = 0
+        guard CGGetDisplayTransferByTable(id, 256, &r, &g, &b, &n) == .success, n > 0 else { return nil }
         let c = Int(n)
         return (Array(r.prefix(c)), Array(g.prefix(c)), Array(b.prefix(c)))
     }

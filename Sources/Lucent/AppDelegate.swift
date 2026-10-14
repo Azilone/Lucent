@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import ServiceManagement
+import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let defaults = UserDefaults.standard
@@ -15,6 +16,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var hotKey: EventHotKeyRef?
     private var poll: Timer?
     private var shownIcon: String?
+    private let power = PowerMonitor()
+    private var updater: SPUStandardUpdaterController!
+    private var autoItems: [NSMenuItem] = []
+    /// Native brightness to restore when an automatic boost ends.
+    private var savedNative: Float?
+    /// Native brightness may still be ramping right after we set it: don't treat that as a user change.
+    private var dropGraceUntil: CFTimeInterval = 0
 
     private let step: Double = 50
     private var sdrNits: Double { Booster.sdrNits }
@@ -30,7 +38,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         set { defaults.set(newValue, forKey: "nits") }
     }
 
+    // Automatic boost options (menu checkboxes).
+    private var autoOnBattery: Bool {
+        get { defaults.bool(forKey: "autoOnBattery") }
+        set { defaults.set(newValue, forKey: "autoOnBattery") }
+    }
+    private var autoOnAC: Bool {
+        get { defaults.bool(forKey: "autoOnAC") }
+        set { defaults.set(newValue, forKey: "autoOnAC") }
+    }
+    private var pauseInLowPower: Bool {
+        get { defaults.object(forKey: "pauseInLowPower") as? Bool ?? true }
+        set { defaults.set(newValue, forKey: "pauseInLowPower") }
+    }
+    /// Level used by automatic boosts: the last boost the user chose.
+    private var boostLevel: Double {
+        get { defaults.object(forKey: "boostLevel") as? Double ?? maxNits }
+        set { defaults.set(newValue, forKey: "boostLevel") }
+    }
+    private var paused: Bool { pauseInLowPower && power.lowPower }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        updater = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
         buildMenu()
         registerHotKey()
 
@@ -54,6 +83,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         booster.attach()
         if !atNativeMax { nits = sdrNits }
         applyState(animated: false)
+
+        power.onChange = { [weak self] _, _ in self?.powerChanged() }
+        power.start()
+        powerChanged(atLaunch: true)
 
         let t = Timer(timeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
         t.tolerance = 0.3
@@ -89,11 +122,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch key {
         case .up:
             if b < 0.995 { native = min(1, (grid + 1) * nativeStep); NativeBrightness.set(id, native) }
+            else if paused { return false } // let macOS show its own "max" HUD
             else { nits = min(maxNits, nits + boostStep) }
         case .down:
-            if nits > sdrNits { nits = max(sdrNits, nits - boostStep) }
+            if nits > sdrNits && !paused { nits = max(sdrNits, nits - boostStep) }
             else { native = max(0, (grid - 1) * nativeStep); NativeBrightness.set(id, native) }
         }
+        if nits > sdrNits { boostLevel = nits }
+        savedNative = nil // the user took over
         NSLog("Lucent: key %@%@ native %.3f -> %.3f, nits %.0f", key == .up ? "up" : "down", fine ? " fine" : "", b, native, nits)
         applyState(animated: true)
         showHUD(native: native)
@@ -105,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Accessibility granted after launch: start listening to the keys.
         if !keys.isRunning, BrightnessKeys.isTrusted, keys.start() { updateUI() }
         // User lowered brightness another way (Control Center, ambient sensor…): drop the boost.
-        if enabled, nits > sdrNits, booster.displayID != nil, !atNativeMax {
+        if enabled, nits > sdrNits, booster.displayID != nil, CACurrentMediaTime() > dropGraceUntil, !atNativeMax {
             NSLog("Lucent: native brightness below max, dropping boost")
             nits = sdrNits
             applyState(animated: true)
@@ -115,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func menuWillOpen(_ menu: NSMenu) { updateUI() }
 
     private func applyState(animated: Bool) {
-        booster.set(nits: enabled ? nits : sdrNits, animated: animated)
+        booster.set(nits: enabled && !paused ? nits : sdrNits, animated: animated)
         updateUI()
     }
 
@@ -129,6 +165,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // Approximate panel output for the native range (perceptual slider ≈ gamma 2.2).
             hud.show(nits: sdrNits * pow(b, 2.2), fraction: 0.5 * b, xdr: false, on: screen)
         }
+    }
+
+    // MARK: Automatic boost
+
+    /// Battery/AC switch or Low Power Mode change: start or end the automatic boost.
+    private func powerChanged(atLaunch: Bool = false) {
+        let wanted = power.source == .battery ? autoOnBattery : autoOnAC
+        NSLog("Lucent: power %@%@, auto boost %@", power.source == .battery ? "battery" : "AC",
+              power.lowPower ? " (Low Power Mode)" : "", wanted && !paused ? "on" : "off")
+        if wanted && !paused { autoBoostOn() }
+        else if !atLaunch { autoBoostOff() }
+        updateUI()
+    }
+
+    private func autoBoostOn() {
+        guard enabled, let id = booster.displayID, let b = NativeBrightness.value(id) else { return }
+        if b < 0.995 {
+            savedNative = b
+            NativeBrightness.set(id, 1)
+            dropGraceUntil = CACurrentMediaTime() + 3
+        }
+        nits = max(boostLevel, sdrNits + step)
+        applyState(animated: true)
+        showHUD(native: 1)
+    }
+
+    private func autoBoostOff() {
+        let wasBoosted = nits > sdrNits
+        nits = sdrNits
+        applyState(animated: true)
+        if let id = booster.displayID, let saved = savedNative { NativeBrightness.set(id, saved) }
+        savedNative = nil
+        if wasBoosted { showHUD() }
+    }
+
+    @objc private func toggleAuto(_ sender: NSMenuItem) {
+        switch sender.tag {
+        case 0: autoOnBattery.toggle()
+        case 1: autoOnAC.toggle()
+        default: pauseInLowPower.toggle()
+        }
+        if sender.tag == 2 { applyState(animated: true) } else { powerChanged() }
+        updateUI()
     }
 
     @objc private func screensChanged() {
@@ -159,6 +238,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(sliderItem)
 
         menu.addItem(.separator())
+        let header = NSMenuItem(title: "Automatic Boost", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        for (tag, title) in ["On Battery", "When Plugged In", "Pause in Low Power Mode"].enumerated() {
+            let item = NSMenuItem(title: title, action: #selector(toggleAuto(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = tag
+            item.indentationLevel = 1
+            menu.addItem(item)
+            autoItems.append(item)
+        }
+
+        menu.addItem(.separator())
         accessItem = NSMenuItem(title: "Allow Brightness Keys…", action: #selector(requestAccess), keyEquivalent: "")
         accessItem.target = self
         menu.addItem(accessItem)
@@ -166,6 +258,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         login.target = self
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         menu.addItem(login)
+        let update = NSMenuItem(title: "Check for Updates…", action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)), keyEquivalent: "")
+        update.target = updater
+        menu.addItem(update)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Lucent", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.delegate = self
@@ -180,6 +275,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func sliderChanged() {
         nits = slider.doubleValue
+        if nits > sdrNits { boostLevel = nits }
+        savedNative = nil
         applyState(animated: true)
     }
 
@@ -212,11 +309,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateUI() {
         toggleItem.state = enabled ? .on : .off
         slider.doubleValue = nits
-        slider.isEnabled = enabled && booster.displayID != nil
+        slider.isEnabled = enabled && booster.displayID != nil && !paused
         valueLabel.stringValue = booster.displayID == nil ? "No XDR display"
+            : paused ? "Paused in Low Power Mode"
             : nits > sdrNits ? "XDR brightness: \(Int(nits)) nits" : "Native brightness (500 nits)"
         accessItem.isHidden = keys.isRunning
-        let icon = enabled && nits > sdrNits ? "sun.max.fill" : "sun.max"
+        for (item, on) in zip(autoItems, [autoOnBattery, autoOnAC, pauseInLowPower]) { item.state = on ? .on : .off }
+        let icon = enabled && !paused && nits > sdrNits ? "sun.max.fill" : "sun.max"
         if icon != shownIcon {
             shownIcon = icon
             statusItem.button?.image = NSImage(systemSymbolName: icon, accessibilityDescription: "Lucent")

@@ -16,6 +16,10 @@
 
 **TL;DR:** macOS caps XDR displays at 500 nits. Lucent lets your brightness keys go past 100%, up to 1000 nits.
 
+- ☀︎ Brightness keys go past 100%, with a HUD in nits
+- 🔋 Optional auto-boost on battery or when plugged in, paused in Low Power Mode
+- ⬆️ Updates itself
+
 ## Lucent vs Vivid
 
 | | **Lucent** | Vivid |
@@ -43,6 +47,12 @@ A 1-pt EDR pixel switches the panel into extended range, then the gamma table is
 
 ```bash
 git clone https://github.com/Azilone/Lucent.git && cd Lucent && ./build.sh --install
+```
+
+Release a new version (builds, publishes the GitHub release, signs the Sparkle update):
+
+```bash
+./release.sh 1.2 "- What changed"
 ```
 </details>
 
